@@ -1,17 +1,5 @@
 #  高级Web技术 Lab 1：Three.js 与 XML
 
-2017.4
-
-TA: 
-
-李逢双 邮箱：13302010002@fudan.edu.cn，微信号：lfs941102
-
-童仲毅 邮箱：13302010039@fudan.edu.cn，微信号：ZHONGYI_TONG
-
-关于 Lab 的问题推荐询问李逢双助教，关于 PJ 的问题推荐询问童仲毅助教。
-
-[TOC]
-
 ## 概述
 
 Lab 1 的主要内容包括：
