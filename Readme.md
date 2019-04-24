@@ -8,7 +8,9 @@ Lab 2 的主要内容包括：
 - 使用 socket.io 技术使web3d场景允许多人加入，并且行为共享。
 - 使用 three.js 导入3D模型
 
-## Part 1: three.js
+## Part 1: Three.js
+
+### 前言
 
 three.js 是一个 WebGL 库，对 WebGL API 进行了很好的封装。它库函数丰富，上手容易，非常适合 WebGL 开发。
 
@@ -348,14 +350,14 @@ const KEY_D = 68;
 
 class FirstPersonControls {
   constructor(camera, domElement) {
-    ...
+    // ...
     // 初始化移动状态
     this.moveForward = false;
     this.moveBackward = false;
     this.moveLeft = false;
     this.moveRight = false;
   }
-  ...
+  // ...
 	onKeyDown(event) {
     switch (event.keyCode) {
       case KEY_W: this.moveForward = true; break;
@@ -398,7 +400,7 @@ class FirstPersonControls {
 	}
 
   connect() {
-    ...
+    // ...
     document.addEventListener('keydown', this.onKeyDown.bind(this), false);
     document.addEventListener('keyup', this.onKeyUp.bind(this), false);
   }
@@ -466,15 +468,248 @@ function onWindowResize() {
 
 
 
-## Part2 socket.io
+## Part 2: WebSocket
 
+### 前言
 
+#### 服务器推送技术的发展
 
+http协议的最大缺陷在于，通信只能由客户端发起，服务器无法推送消息。于是产生了各种各样的推送技术。
 
+* HTTP Polling
 
+  这种方式下，client 每隔一段时间都会向 server 发送 http 请求，服务器收到请求后，将最新的数据发回给 client。
 
+  ![http-polling](./screenshot/http-polling.png)
 
-### 
+* HTTP Long-polling
+
+  client 向 server 发出请求，server 接收到请求后，server 并不一定立即发送回应给 client，而是看数据是否更新，如果数据已经更新了的话，那就立即将数据返回给 client；但如果数据没有更新，那就把这个请求保持住，等待有新的数据到来时，才将数据返回给 client。
+
+  ![http-polling](./screenshot/http-long-polling.png)
+
+* HTTP Streaming
+
+  流技术基于 Iframe。Iframe 是 HTML 标记，这个标记的 src 属性会保持对指定 server 的长连接请求，server 就可以不断地向 client 返回数据。
+
+  ![http-polling](./screenshot/http-streaming.png)
+
+* Web socket
+
+  前面的技术都只考虑如何让 server 尽快 '回复' client 的请求，为了彻底解决 server 主动向 client 发送数据的问题，W3C 在 HTML5 中提供了一种 client 与 server 间如何进行全双工通讯的网络技术 WebSocket。WebSocket 是一个全新的、独立的协议，基于 TCP 协议，与 HTTP 协议兼容却不会融入 HTTP 协议，仅仅作为 HTML5 的一部分。
+
+  与http的关系：
+
+  * 都是应用层协议，基于TCP
+  * websocket 在建立连接时需要借助http协议
+
+  ![websocket](./screenshot/websocket.png)
+
+> 注：以上内容参考自[知乎专栏](https://zhuanlan.zhihu.com/p/23467317)
+>
+> 更多的事例可以参考以下网站
+>
+> <https://www.websocket.org/>
+>
+> 关于demo可以参考socket.io框架下的一个聊天室
+>
+> <https://socketio-chat-example.now.sh/>
+
+### Socket.io
+
+socket.io 主要使用 websocket 协议 
+
+socket.io 是一个面向实时web应用的javascript库，他有两个部分：在浏览器中运行的客户端库，和一个面向Node.js的服务端库。两者有着几乎一样的API。像Node.js一样，它也是事件驱动的。
+
+* 面向nodejs服务器的[socket.io](https://github.com/socketio/socket.io)
+* 运行在浏览器端的[socket.io-client](https://github.com/socketio/socket.io-client)
+
+接下来的实验中，我们将分别使用客户端和服务端的socket.io库来完成
+
+### 前提条件
+
+接下来的工作，我们会构造一个多人交互的web3D场景，这需要一些前提条件
+
+* 完成Part1的部分，实现一个离线的漫游场景，还未完成的同学建议先完成Part1部分。
+* 了解websocket协议，观察一些诸如聊天室的demo的工作原理，了解使用websocket能做什么。
+* [socket.io](https://socket.io/)作为一个使用websocket协议的javascript库，了解socket.io在应用中是如何在客户端与服务端建立通信的。
+
+### 准备工作
+
+##### 服务端
+
+我们采用nodejs服务器。
+
+* 安装nodejs, npm工具，有以下两种安装方式
+
+  * 前往[官网](https://nodejs.org/)下载安装
+  * 使用[nvm](https://github.com/creationix/nvm)版本管理工具安装
+
+  > 注：安装完成后检查nodejs和npm是否是最新版本
+
+* 我们使用[express](https://expressjs.com/)框架与[socket.io](https://socket.io/)框架，使用npm安装express包与socket.io包
+
+  ```shell
+  mkdir server
+  cd server
+  npm init -y
+  npm install --save express
+  npm install --save socket.io
+  ```
+
+* 在server目录下创建index.js, 加入如下内容
+
+  ```javascript
+  var app = require('express')();
+  var http = require('http').createServer(app);
+  var io = require('socket.io')(http);
+  
+  app.get('/', function(req, res){
+      res.send('<h1>Hello world</h1>');
+  });
+  
+  io.on('connection', function (socket) {
+      console.log('client '+ socket.id + ' connected');
+      socket.on('disconnect', function () {
+          console.log('client ' + socket.id + ' disconnected');
+      })
+  });
+  
+  http.listen(3000, function(){
+      console.log('listening on *:3000');
+  });
+  ```
+
+* 在package.json的scripts项中加入一行"start"，表示start 这条script对应 “node index.js”
+
+  ```json
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  ```
+
+* 运行服务器
+
+  ```shellshe l
+  npm start
+  ```
+
+  当你看到以下内容时，说明服务器已经成功运行在3000端口上
+
+  ```
+  > server@1.0.0 start /Users/xingyu/Desktop/elearning/advanced_web_teaching/2019-web/lab2-Three.js/server
+  > node index.js
+  
+  listening on *:3000
+  ```
+
+  向localhost:3000发送get请求，可以看到以下内容
+
+  ![getlocalhost3000](./screenshot/getlocalhost3000.png)
+
+##### 客户端
+
+有两种方法使用面向客户端的socket.io
+
+- 下载[socket.io.js](<https://github.com/socketio/socket.io-client/blob/master/dist/socket.io.js>)并将他包含在你使用的html文件中。
+
+  ```javascript
+  <script src="js/socket.io.js"></script>
+  ```
+
+- 使用npm安装socket.io-client的module并导入到你的项目中
+
+  - npm 安装socket.io-client模块
+
+    ```shell
+    npm i --save socket.io-client
+    ```
+
+  - 模块的导入
+
+    ```javascript
+    // es6 style (recommended)
+    import io from 'socket.io-client'
+    ```
+
+接下来我们采用第一种方法来构建客户端
+
+在index.html中添加下面的语句
+
+```javascript
+const socket = io('localhost:3000')
+```
+
+此时客户端的基本准备工作就完成了，
+
+此时我们进入或离开客户端的3D场景时，可以看到服务端的控制台上会有相应的提示信息，说明连接已经成功
+
+```shell
+> server@1.0.0 start /Users/xingyu/Desktop/elearning/advanced_web_teaching/2019-web/lab2-Three.js/server
+> node index.js
+
+listening on *:3000
+client ifh80z1mXNAt4yrgAAAA connected
+client ifh80z1mXNAt4yrgAAAA disconnected
+```
+
+###通信架构
+
+建立连接过后，我们要考虑客户端与服务端之间进行怎样的通信，主要分为以下三个部分
+
+* 客户端不断上传自己的实时信息（位置信息与旋转信息）
+
+  在index.html中的renderer函数中加入以下代码，向服务端上传实时信息。
+
+  ```javascript
+  function render() {
+  	fpc.update(clock.getDelta());
+    socket.emit('player', {position: fpc.yawObject.position, rotation: fpc.yawObject.rotation});
+  	requestAnimationFrame(render);
+  	renderer.render(scene, camera);
+  }
+  ```
+
+* 服务端接收每个客户端的实时信息（位置信息与旋转信息），并广播给其他客户端
+
+  ```javascript
+  io.on('connection', function (socket) {
+      console.log('client '+ socket.id + ' connected');
+      socket.on('player', function (data) {
+          socket.broadcast.emit('player', data);
+      });
+      socket.on('disconnect', function () {
+          console.log('client ' + socket.id + ' disconnected');
+      })
+  });
+  ```
+
+* 客户端收到服务端传来的其他客户端的实时信息，并在自己的场景中更新。
+
+  首先要在index.html中建立一个新的Map（该Map将其他客户端的socket.id映射到他们的模型上），来判断服务器发来的需要更新位置信息的客户端是否在场景中，如果没有在场景中，则需要为该客户新建一个模型，并把他加入到Map中，如果已经在场景中了，那只需要更新用户对应的模型的位置和旋转信息即可。
+
+  首先，我们下载[GLTFLoader.js](https://github.com/mrdoob/three.js/blob/master/examples/js/loaders/GLTFLoader.js)到js文件夹里，并在index.html导入
+
+  ```
+  
+  ```
+
+  
+
+  ```javascript
+  socket.on('player' data => {
+            
+   })
+  ```
+
+  
+
+  
+
+##### 
+
+​		
 
 ### 四、天空盒子（Sky Box）
 
