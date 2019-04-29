@@ -283,7 +283,7 @@ fpc.connect()
 接下来，我们在锁定状态下，通过鼠标移动来控制相机的旋转。
 
 * 为control添加camera
-* 将camera封装进pitchObject，再将pitchObject封装进yawObject（请同学们思考为什么要这么做，后面的思考题中会有这个问题）
+* 将camera封装进pitchObject，再将pitchObject封装进yawObject（请同学们思考为什么要这么做）
 * 将yawObject添加到场景中
 
 * 鼠标移动触发相关对象的旋转
@@ -673,7 +673,7 @@ client ifh80z1mXNAt4yrgAAAA connected
 client ifh80z1mXNAt4yrgAAAA disconnected
 ```
 
-###通信架构
+### 通信架构
 
 建立连接过后，我们要考虑客户端与服务端之间进行怎样的通信，主要分为以下三个部分
 
@@ -690,16 +690,18 @@ client ifh80z1mXNAt4yrgAAAA disconnected
   }
   ```
 
-* 服务端接收每个客户端的实时信息（位置信息与旋转信息），并广播给其他客户端
+* 服务端接收每个客户端的实时信息（位置信息与旋转信息），并广播给其他客户端。当有某个客户端断开连接的时候，也要做一次广播。
 
   ```javascript
   io.on('connection', function (socket) {
       console.log('client '+ socket.id + ' connected');
       socket.on('player', function (data) {
+        	data.socketid = socket.id;
           socket.broadcast.emit('player', data);
       });
       socket.on('disconnect', function () {
           console.log('client ' + socket.id + ' disconnected');
+        	socket.broadcast.emit('offline', {socketid: socket.id});
       })
   });
   ```
@@ -719,20 +721,28 @@ client ifh80z1mXNAt4yrgAAAA disconnected
   ```javascript
   let playerMap = new Map();
   socket.on('player', data => {
-    if (playerMap.has(socket.id)) {
-  		let model = playerMap.get(socket.id);
-    	model.position.set(data.position.x, data.position.y, data.position.z);
-    	model.rotation.set(data.rotation._x, data.rotation._y + Math.PI / 2, data.rotation._z);
-    } else {
-      const loader = new THREE.GLTFLoader();
-      loader.load("./assets/models/duck.glb", (mesh) => {
-        mesh.scene.scale.set(10, 10, 10);
-        scene.add(mesh.scene);
-        playerMap.set(socket.id, mesh.scene);
-  		});
+    if (playerMap.has(data.socketid)) {
+  		let model = playerMap.get(data.socketid);
+        model.position.set(data.position.x, data.position.y, data.position.z);
+        model.rotation.set(data.rotation._x, data.rotation._y + Math.PI / 2, data.rotation._z);
+      } else {
+        const loader = new THREE.GLTFLoader();
+        loader.load("./assets/models/duck.glb", (mesh) => {
+        	mesh.scene.scale.set(10, 10, 10);
+        	scene.add(mesh.scene);
+        	playerMap.set(data.socketid, mesh.scene);
+  			});
+  		}
+  });
+  socket.on('offline', data => {
+    if (playerMap.has(data.socketid)) {
+      scene.remove(playerMap.get(data.socketid));
+      playerMap.delete(data.socketid)
     }
-  })
+  });
   ```
+
+* 
 
 * 重启node服务端，打开两个浏览器窗口，我们可以看到每位玩家的实时信息都会在其他玩家的浏览器中以"duck"这个模型为载体展现出来。
 
